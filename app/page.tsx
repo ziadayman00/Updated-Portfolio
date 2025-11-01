@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   Github,
   Linkedin,
@@ -11,12 +11,13 @@ import {
   ArrowRight,
   Sun,
   Moon,
+  Menu,
+  Loader2,
+  FileText,
 } from "lucide-react";
 import Image from "next/image";
 
 // ==================== PROJECT DATA ====================
-// TO ADD NEW PROJECT: Just copy an object and fill in your data!
-
 const FEATURED_PROJECTS = [
   {
     title: "Listed",
@@ -48,6 +49,7 @@ const FEATURED_PROJECTS = [
     live: "#",
     github: "https://github.com/ziadayman00/listed",
     comingSoon: false,
+    inProgress: true,
   },
   {
     title: "Skillify",
@@ -77,6 +79,7 @@ const FEATURED_PROJECTS = [
     live: "https://learning-platform-dbdw.vercel.app",
     github: "https://github.com/ziadayman00/learning-platform",
     comingSoon: false,
+    inProgress: true,
   },
 ];
 
@@ -203,34 +206,323 @@ const TECH_STACK = [
   "REST APIs",
 ];
 
-// ==================== MAIN COMPONENT ====================
+// ==================== HOOKS ====================
+function useKeyboardNavigation(
+  isOpen: boolean,
+  onClose: () => void,
+  onPrev?: () => void,
+  onNext?: () => void
+) {
+  useEffect(() => {
+    if (!isOpen) return;
 
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+      if (e.key === "ArrowLeft" && onPrev) onPrev();
+      if (e.key === "ArrowRight" && onNext) onNext();
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose, onPrev, onNext]);
+}
+
+function useScrollLock(isLocked: boolean) {
+  useEffect(() => {
+    if (isLocked) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [isLocked]);
+}
+
+// ==================== COMPONENTS ====================
 type Project = (typeof FEATURED_PROJECTS)[0] | (typeof WEB_PROJECTS)[0];
 
+interface ImageModalProps {
+  project: Project;
+  currentIndex: number;
+  onClose: () => void;
+  onPrev: () => void;
+  onNext: () => void;
+  onIndexChange: (index: number) => void;
+  darkMode: boolean;
+}
+
+function ImageModal({
+  project,
+  currentIndex,
+  onClose,
+  onPrev,
+  onNext,
+  onIndexChange,
+  darkMode,
+}: ImageModalProps) {
+  const [imageLoading, setImageLoading] = useState(true);
+  const modalRef = useRef<HTMLDivElement>(null);
+
+  useKeyboardNavigation(true, onClose, onPrev, onNext);
+  useScrollLock(true);
+
+  const themeClasses = {
+    bg: darkMode ? "bg-[#1c1c1c]" : "bg-[#f5f1e8]",
+    text: darkMode ? "text-[#f5f1e8]" : "text-[#1c1c1c]",
+    accent: darkMode ? "text-[#ff8c42]" : "text-[#c5581f]",
+    accentBg: darkMode
+      ? "bg-[#ff8c42] text-[#1c1c1c]"
+      : "bg-[#c5581f] text-[#f5f1e8]",
+    border: darkMode ? "border-[#f5f1e8]" : "border-[#1c1c1c]",
+    hoverBg: darkMode
+      ? "hover:bg-[#f5f1e8] hover:text-[#1c1c1c]"
+      : "hover:bg-[#1c1c1c] hover:text-[#f5f1e8]",
+  };
+
+  const handlePrevClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (currentIndex > 0) {
+      setImageLoading(true);
+      onPrev();
+    }
+  };
+
+  const handleNextClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (currentIndex < project.images.length - 1) {
+      setImageLoading(true);
+      onNext();
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4 animate-fadeIn"
+      style={{
+        backdropFilter: "blur(10px)",
+        backgroundColor: "rgba(0, 0, 0, 0.85)",
+      }}
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modal-title"
+    >
+      <div
+        ref={modalRef}
+        className={`relative w-full max-w-6xl ${themeClasses.bg} border-4 ${themeClasses.border} shadow-2xl animate-scaleIn`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          onClick={onClose}
+          className={`absolute -top-4 -right-4 z-10 ${themeClasses.accentBg} p-3 border-4 ${themeClasses.border} transition-all duration-300 hover:scale-110 hover:rotate-90 focus:outline-none focus:ring-2 focus:ring-offset-2`}
+          aria-label="Close modal"
+        >
+          <X size={20} />
+        </button>
+
+        {/* Header */}
+        <div className={`p-4 md:p-6 border-b-4 ${themeClasses.border}`}>
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+            <div>
+              <h3 id="modal-title" className="text-2xl md:text-3xl font-black mb-1">
+                {project.title}
+              </h3>
+              <p className={`text-base md:text-lg ${themeClasses.accent} font-bold`}>
+                {project.subtitle}
+              </p>
+            </div>
+            <div
+              className={`${themeClasses.accentBg} px-3 py-1.5 text-sm md:text-base font-black`}
+              role="status"
+              aria-live="polite"
+            >
+              {currentIndex + 1} / {project.images.length}
+            </div>
+          </div>
+        </div>
+
+        {/* Image Gallery */}
+        <div
+          className={`relative min-h-[40vh] max-h-[55vh] flex items-center justify-center p-4 md:p-6 ${
+            darkMode ? "bg-black/20" : "bg-black/10"
+          }`}
+        >
+          {imageLoading && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <Loader2 className={`w-12 h-12 animate-spin ${themeClasses.accent}`} />
+            </div>
+          )}
+          
+          <div className="relative w-full h-full flex items-center justify-center">
+            <Image
+              src={project.images[currentIndex]}
+              alt={`${project.title} - Screenshot ${currentIndex + 1}`}
+              className={`max-w-full max-h-[50vh] w-auto h-auto object-contain transition-opacity duration-300 ${
+                imageLoading ? "opacity-0" : "opacity-100"
+              }`}
+              onLoad={() => setImageLoading(false)}
+              loading="eager"
+            />
+          </div>
+
+          {project.images.length > 1 && (
+            <>
+              <button
+                onClick={handlePrevClick}
+                disabled={currentIndex === 0}
+                className={`absolute left-2 md:left-4 top-1/2 -translate-y-1/2 ${themeClasses.accentBg} p-2 md:p-3 border-2 ${themeClasses.border} disabled:opacity-30 disabled:cursor-not-allowed transition-all duration-300 hover:scale-110 hover:-translate-x-1 focus:outline-none focus:ring-2 focus:ring-offset-2`}
+                aria-label="Previous image"
+              >
+                <ChevronLeft size={20} />
+              </button>
+              <button
+                onClick={handleNextClick}
+                disabled={currentIndex === project.images.length - 1}
+                className={`absolute right-2 md:right-4 top-1/2 -translate-y-1/2 ${themeClasses.accentBg} p-2 md:p-3 border-2 ${themeClasses.border} disabled:opacity-30 disabled:cursor-not-allowed transition-all duration-300 hover:scale-110 hover:translate-x-1 focus:outline-none focus:ring-2 focus:ring-offset-2`}
+                aria-label="Next image"
+              >
+                <ChevronRight size={20} />
+              </button>
+            </>
+          )}
+
+          {/* Image Dots */}
+          {project.images.length > 1 && (
+            <div className="absolute bottom-2 md:bottom-4 left-1/2 -translate-x-1/2 flex gap-1.5" role="tablist">
+              {project.images.map((_, idx) => (
+                <button
+                  key={idx}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setImageLoading(true);
+                    onIndexChange(idx);
+                  }}
+                  className={`w-2 h-2 rounded-full transition-all duration-300 focus:outline-none focus:ring-2 ${
+                    idx === currentIndex
+                      ? themeClasses.accentBg + " w-6"
+                      : `${darkMode ? "bg-gray-600" : "bg-gray-400"}`
+                  }`}
+                  role="tab"
+                  aria-selected={idx === currentIndex}
+                  aria-label={`Go to image ${idx + 1}`}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div
+          className={`p-4 md:p-6 border-t-4 ${themeClasses.border} flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3`}
+        >
+          <div className="flex flex-wrap gap-2">
+            {project.tech?.slice(0, 3).map((tech, j) => (
+              <span
+                key={j}
+                className={`border-2 ${themeClasses.border} px-2 py-1 text-xs font-black`}
+              >
+                {tech}
+              </span>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            {project.live !== "#" && !project.comingSoon && (
+              <a
+                href={project.live}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`flex items-center gap-2 font-black border-2 ${themeClasses.border} px-4 py-2 ${themeClasses.hoverBg} transition-all duration-300 hover:scale-105 text-xs md:text-sm focus:outline-none focus:ring-2 focus:ring-offset-2`}
+              >
+                LIVE <ExternalLink size={16} />
+              </a>
+            )}
+            {project.github !== "#" && (
+              <a
+                href={project.github}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`flex items-center gap-2 font-black ${themeClasses.accentBg} px-4 py-2 border-2 ${themeClasses.border} transition-all duration-300 hover:scale-105 text-xs md:text-sm focus:outline-none focus:ring-2 focus:ring-offset-2`}
+              >
+                CODE <Github size={16} />
+              </a>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ==================== MAIN COMPONENT ====================
 export default function Portfolio() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
-  // Theme Classes
-  const bg = darkMode ? "bg-[#1c1c1c]" : "bg-[#f5f1e8]";
-  const text = darkMode ? "text-[#f5f1e8]" : "text-[#1c1c1c]";
-  const accent = darkMode ? "text-[#ff8c42]" : "text-[#c5581f]";
-  const accentBg = darkMode
-    ? "bg-[#ff8c42] text-[#1c1c1c]"
-    : "bg-[#c5581f] text-[#f5f1e8]";
-  const border = darkMode ? "border-[#f5f1e8]" : "border-[#1c1c1c]";
-  const hoverBg = darkMode
-    ? "hover:bg-[#f5f1e8] hover:text-[#1c1c1c]"
-    : "hover:bg-[#1c1c1c] hover:text-[#f5f1e8]";
+  const themeClasses = {
+    bg: darkMode ? "bg-[#1c1c1c]" : "bg-[#f5f1e8]",
+    text: darkMode ? "text-[#f5f1e8]" : "text-[#1c1c1c]",
+    accent: darkMode ? "text-[#ff8c42]" : "text-[#c5581f]",
+    accentBg: darkMode
+      ? "bg-[#ff8c42] text-[#1c1c1c]"
+      : "bg-[#c5581f] text-[#f5f1e8]",
+    border: darkMode ? "border-[#f5f1e8]" : "border-[#1c1c1c]",
+    hoverBg: darkMode
+      ? "hover:bg-[#f5f1e8] hover:text-[#1c1c1c]"
+      : "hover:bg-[#1c1c1c] hover:text-[#f5f1e8]",
+  };
+
+  const handleCloseModal = useCallback(() => {
+    setSelectedProject(null);
+    setCurrentImageIndex(0);
+  }, []);
+
+  const handlePrevImage = useCallback(() => {
+    setCurrentImageIndex((prev) => Math.max(0, prev - 1));
+  }, []);
+
+  const handleNextImage = useCallback(() => {
+    if (selectedProject) {
+      setCurrentImageIndex((prev) =>
+        Math.min(selectedProject.images.length - 1, prev + 1)
+      );
+    }
+  }, [selectedProject]);
+
+  const handleOpenModal = useCallback((project: Project) => {
+    setSelectedProject(project);
+    setCurrentImageIndex(0);
+  }, []);
 
   return (
     <div
-      className={`min-h-screen ${bg} ${text} transition-colors duration-500`}
+      className={`min-h-screen ${themeClasses.bg} ${themeClasses.text} transition-colors duration-500`}
     >
       <style>{`
-        /* Custom Scrollbar */
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes scaleIn {
+          from { transform: scale(0.95); opacity: 0; }
+          to { transform: scale(1); opacity: 1; }
+        }
+        @keyframes slideDown {
+          from { transform: translateY(-10px); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
+        }
+        .animate-fadeIn {
+          animation: fadeIn 0.3s ease-out;
+        }
+        .animate-scaleIn {
+          animation: scaleIn 0.3s ease-out;
+        }
+        .animate-slideDown {
+          animation: slideDown 0.3s ease-out;
+        }
         .custom-scrollbar::-webkit-scrollbar {
           width: 8px;
         }
@@ -244,14 +536,26 @@ export default function Portfolio() {
         .custom-scrollbar::-webkit-scrollbar-thumb:hover {
           background: ${darkMode ? "#ff7a28" : "#b04d1a"};
         }
+        html {
+          scroll-behavior: smooth;
+        }
       `}</style>
 
       {/* FLOATING NAV CONTROLS */}
       <div className="fixed top-4 right-4 md:top-6 md:right-6 z-50 flex items-center gap-4 md:gap-6">
+        <a
+          href="https://drive.google.com/file/d/11gxwQIABEZ1E3ttQNU_WTih6wULXM8Uk/view?usp=drive_link"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="transition-all duration-300 p-2 md:p-2 focus:outline-none focus:ring-2 focus:ring-offset-2 rounded-full"
+          aria-label="View Resume"
+        >
+          <FileText size={24} className="md:w-7 md:h-7" />
+        </a>
         <button
           onClick={() => setDarkMode(!darkMode)}
-          className="transition-all duration-300 p-2 md:p-2"
-          aria-label="Toggle theme"
+          className="transition-all duration-300 p-2 md:p-2 focus:outline-none focus:ring-2 focus:ring-offset-2 rounded-full"
+          aria-label={darkMode ? "Switch to light mode" : "Switch to dark mode"}
         >
           {darkMode ? (
             <Sun size={24} className="md:w-7 md:h-7" />
@@ -261,228 +565,90 @@ export default function Portfolio() {
         </button>
         <button
           onClick={() => setMenuOpen(!menuOpen)}
-          className="flex flex-col items-center justify-center gap-1.5 transition-all duration-300 p-2"
-          aria-label="Toggle menu"
+          className="flex flex-col items-center justify-center gap-1.5 transition-all duration-300 p-2 focus:outline-none focus:ring-2 focus:ring-offset-2 rounded"
+          aria-label={menuOpen ? "Close menu" : "Open menu"}
+          aria-expanded={menuOpen}
         >
           <span
-            className={`w-6 h-0.5 md:w-7 ${
-              darkMode ? "bg-[#f5f1e8]" : "bg-[#1c1c1c]"
-            } transition-all duration-300 ${
+            className={`w-6 h-0.5 md:w-7 ${themeClasses.bg === "bg-[#1c1c1c]" ? "bg-[#f5f1e8]" : "bg-[#1c1c1c]"} transition-all duration-300 ${
               menuOpen ? "rotate-45 translate-y-2" : ""
             }`}
           />
           <span
-            className={`w-6 h-0.5 md:w-7 ${
-              darkMode ? "bg-[#f5f1e8]" : "bg-[#1c1c1c]"
-            } transition-all duration-300 ${menuOpen ? "opacity-0" : ""}`}
+            className={`w-6 h-0.5 md:w-7 ${themeClasses.bg === "bg-[#1c1c1c]" ? "bg-[#f5f1e8]" : "bg-[#1c1c1c]"} transition-all duration-300 ${
+              menuOpen ? "opacity-0" : ""
+            }`}
           />
           <span
-            className={`w-6 h-0.5 md:w-7 ${
-              darkMode ? "bg-[#f5f1e8]" : "bg-[#1c1c1c]"
-            } transition-all duration-300 ${
+            className={`w-6 h-0.5 md:w-7 ${themeClasses.bg === "bg-[#1c1c1c]" ? "bg-[#f5f1e8]" : "bg-[#1c1c1c]"} transition-all duration-300 ${
               menuOpen ? "-rotate-45 -translate-y-2" : ""
             }`}
           />
         </button>
       </div>
 
-      {/* MENU OVERLAY - PUSHES DOWN */}
+      {/* MENU OVERLAY */}
       <div
-        className={`overflow-hidden transition-all duration-500 ${
+        className={`fixed top-0 left-0 right-0 z-40 overflow-hidden transition-all duration-500 ${
           menuOpen ? "max-h-screen" : "max-h-0"
         }`}
       >
-        <div className={`${bg} border-b-2 ${border}`}>
-          <div className="max-w-7xl mx-auto p-6 md:p-8">
-            <nav className="flex flex-col sm:flex-row sm:justify-center gap-6 md:gap-12">
-              {["WORK", "ABOUT", "CONTACT"].map((item) => (
+        <div className={`${themeClasses.bg} border-b-2 ${themeClasses.border} animate-slideDown`}>
+          <nav className="max-w-7xl mx-auto p-6 md:p-8 mt-16 md:mt-20" role="navigation" aria-label="Main navigation">
+            <div className="flex flex-col sm:flex-row sm:justify-center gap-6 md:gap-12">
+              {[
+                { name: "WORK", href: "#work" },
+                { name: "ABOUT", href: "#about" },
+                { name: "CONTACT", href: "#contact" },
+                {
+                  name: "RESUME",
+                  href: "https://drive.google.com/file/d/11gxwQIABEZ1E3ttQNU_WTih6wULXM8Uk/view?usp=drive_link",
+                  external: true,
+                },
+              ].map((item) => (
                 <a
-                  key={item}
-                  href={`#${item.toLowerCase()}`}
-                  className={`text-3xl sm:text-4xl md:text-5xl font-black tracking-tight transition-all duration-300 hover:translate-x-2 ${accent}`}
-                  onClick={() => setMenuOpen(false)}
+                  key={item.name}
+                  href={item.href}
+                  {...(item.external && {
+                    target: "_blank",
+                    rel: "noopener noreferrer",
+                  })}
+                  className={`text-3xl sm:text-4xl md:text-5xl font-black tracking-tight transition-all duration-300 hover:translate-x-2 ${themeClasses.accent} focus:outline-none focus:ring-2 focus:ring-offset-2`}
+                  onClick={() => !item.external && setMenuOpen(false)}
                 >
-                  {item}
+                  {item.name}
                 </a>
               ))}
-              <a
-                href="https://drive.google.com/file/d/11gxwQIABEZ1E3ttQNU_WTih6wULXM8Uk/view?usp=drive_link"
-                target="_blank"
-                rel="noopener noreferrer"
-                className={`text-3xl sm:text-4xl md:text-5xl font-black tracking-tight transition-all duration-300 hover:translate-x-2 ${accent}`}
-                onClick={() => setMenuOpen(false)}
-              >
-                RESUME
-              </a>
-            </nav>
-          </div>
+            </div>
+          </nav>
         </div>
       </div>
-      {/* IMAGE MODAL - IMPROVED DESIGN */}
+
+      {/* SPACER - Pushes content down when menu is open */}
+      <div
+        className={`transition-all duration-500 ${
+          menuOpen ? "h-[280px] sm:h-[240px] md:h-[260px]" : "h-0"
+        }`}
+      />
+
+      {/* IMAGE MODAL */}
       {selectedProject && (
-        <div
-          className="fixed inset-0 z-[100] flex items-center justify-center p-4"
-          style={{
-            backdropFilter: "blur(10px)",
-            backgroundColor: "rgba(0, 0, 0, 0.8)",
-          }}
-          onClick={() => {
-            setSelectedProject(null);
-            setCurrentImageIndex(0);
-          }}
-        >
-          <div
-            className={`relative w-full max-w-5xl ${bg} border-4 ${border} shadow-2xl`}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              onClick={() => {
-                setSelectedProject(null);
-                setCurrentImageIndex(0);
-              }}
-              className={`absolute -top-4 -right-4 z-10 ${accentBg} p-3 border-4 ${border} transition-all duration-300 hover:scale-110 hover:rotate-90`}
-            >
-              <X size={20} />
-            </button>
-
-            {/* Header */}
-            <div className={`p-4 md:p-6 border-b-4 ${border}`}>
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                <div>
-                  <h3 className="text-2xl md:text-3xl font-black mb-1">
-                    {selectedProject.title}
-                  </h3>
-                  <p className={`text-base md:text-lg ${accent} font-bold`}>
-                    {selectedProject.subtitle}
-                  </p>
-                </div>
-                <div
-                  className={`${accentBg} px-3 py-1.5 text-sm md:text-base font-black`}
-                >
-                  {currentImageIndex + 1} / {selectedProject.images.length}
-                </div>
-              </div>
-            </div>
-
-            {/* Image Gallery - Real Aspect Ratio */}
-            <div
-              className={`relative min-h-[40vh] max-h-[50vh] flex items-center justify-center p-4 md:p-6 ${
-                darkMode ? "bg-black/20" : "bg-black/10"
-              }`}
-            >
-              <div className="relative w-full h-full flex items-center justify-center">
-                <Image
-                  src={selectedProject.images[currentImageIndex]}
-                  alt={`${selectedProject.title} - Image ${
-                    currentImageIndex + 1
-                  }`}
-                  width={1920}
-                  height={1080}
-                  className="max-w-full max-h-[45vh] w-auto h-auto object-contain"
-                  quality={100}
-                  priority
-                />
-              </div>
-
-              {selectedProject.images.length > 1 && (
-                <>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setCurrentImageIndex(Math.max(0, currentImageIndex - 1));
-                    }}
-                    disabled={currentImageIndex === 0}
-                    className={`absolute left-2 md:left-4 top-1/2 -translate-y-1/2 ${accentBg} p-2 md:p-3 border-2 ${border} disabled:opacity-20 disabled:cursor-not-allowed transition-all duration-300 hover:scale-110 hover:-translate-x-1`}
-                  >
-                    <ChevronLeft size={20} />
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setCurrentImageIndex(
-                        Math.min(
-                          selectedProject.images.length - 1,
-                          currentImageIndex + 1
-                        )
-                      );
-                    }}
-                    disabled={
-                      currentImageIndex === selectedProject.images.length - 1
-                    }
-                    className={`absolute right-2 md:right-4 top-1/2 -translate-y-1/2 ${accentBg} p-2 md:p-3 border-2 ${border} disabled:opacity-20 disabled:cursor-not-allowed transition-all duration-300 hover:scale-110 hover:translate-x-1`}
-                  >
-                    <ChevronRight size={20} />
-                  </button>
-                </>
-              )}
-
-              {/* Image Dots */}
-              {selectedProject.images.length > 1 && (
-                <div className="absolute bottom-2 md:bottom-4 left-1/2 -translate-x-1/2 flex gap-1.5">
-                  {selectedProject.images.map((_, idx) => (
-                    <button
-                      key={idx}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setCurrentImageIndex(idx);
-                      }}
-                      className={`w-2 h-2 rounded-full transition-all duration-300 ${
-                        idx === currentImageIndex
-                          ? accentBg
-                          : `${darkMode ? "bg-gray-600" : "bg-gray-400"}`
-                      }`}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Footer with Actions */}
-            <div
-              className={`p-4 md:p-6 border-t-4 ${border} flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3`}
-            >
-              <div className="flex flex-wrap gap-2">
-                {selectedProject.tech?.slice(0, 3).map((tech, j) => (
-                  <span
-                    key={j}
-                    className={`border-2 ${border} px-2 py-1 text-xs font-black`}
-                  >
-                    {tech}
-                  </span>
-                ))}
-              </div>
-              <div className="flex gap-2">
-                {selectedProject.live !== "#" &&
-                  !selectedProject.comingSoon && (
-                    <a
-                      href={selectedProject.live}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={`flex items-center gap-2 font-black border-2 ${border} px-4 py-2 ${hoverBg} transition-all duration-300 hover:scale-105 text-xs md:text-sm`}
-                    >
-                      LIVE <ExternalLink size={16} />
-                    </a>
-                  )}
-                {selectedProject.github !== "#" && (
-                  <a
-                    href={selectedProject.github}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={`flex items-center gap-2 font-black ${accentBg} px-4 py-2 border-2 ${border} transition-all duration-300 hover:scale-105 text-xs md:text-sm`}
-                  >
-                    CODE <Github size={16} />
-                  </a>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
+        <ImageModal
+          project={selectedProject}
+          currentIndex={currentImageIndex}
+          onClose={handleCloseModal}
+          onPrev={handlePrevImage}
+          onNext={handleNextImage}
+          onIndexChange={setCurrentImageIndex}
+          darkMode={darkMode}
+        />
       )}
+
       {/* HERO SECTION */}
       <section className="min-h-screen flex items-center justify-center px-4 sm:px-6 pt-16 md:pt-0">
         <div className="max-w-7xl w-full">
           <p
-            className={`text-xs sm:text-sm font-medium tracking-[0.3em] mb-1 md:mb-6 ${accent}`}
+            className={`text-xs sm:text-sm font-medium tracking-[0.3em] mb-1 md:mb-6 ${themeClasses.accent}`}
           >
             PORTFOLIO 2025
           </p>
@@ -500,7 +666,7 @@ export default function Portfolio() {
               <p className="text-2xl sm:text-3xl md:text-5xl font-black leading-tight">
                 React & Next.js
                 <br />
-                <span className={accent}>Specialist</span>
+                <span className={themeClasses.accent}>Specialist</span>
               </p>
             </div>
             <div className="flex flex-col justify-end mt-4 md:mt-0">
@@ -516,12 +682,12 @@ export default function Portfolio() {
         </div>
       </section>
 
-      {/* ABOUT/INTRO */}
+      {/* ABOUT SECTION */}
       <section id="about" className="py-10 sm:py-20 md:py-32 px-4 sm:px-6">
         <div className="max-w-5xl mx-auto">
           <div className="flex items-start gap-4 md:gap-6 mb-6 md:mb-12">
             <div
-              className={`${accentBg} px-3 py-1 md:px-4 md:py-2 text-xl md:text-2xl font-black`}
+              className={`${themeClasses.accentBg} px-3 py-1 md:px-4 md:py-2 text-xl md:text-2xl font-black`}
             >
               01
             </div>
@@ -533,7 +699,7 @@ export default function Portfolio() {
           <div className="space-y-4 md:space-y-8 text-lg sm:text-xl md:text-2xl leading-relaxed font-medium">
             <p>
               My name is{" "}
-              <span className={`${accent} font-black`}>ZIAD AYMAN</span>.
+              <span className={`${themeClasses.accent} font-black`}>ZIAD AYMAN</span>.
               Frontend Developer with expertise building high-performance web
               applications.
             </p>
@@ -547,7 +713,7 @@ export default function Portfolio() {
             </p>
             <p>
               Currently at{" "}
-              <span className={`${accent} font-black`}>AmbientLightFilms</span>,
+              <span className={`${themeClasses.accent} font-black`}>AmbientLightFilms</span>,
               improving engagement by 35% and serving 1000+ daily users.
             </p>
           </div>
@@ -556,7 +722,7 @@ export default function Portfolio() {
             <div>
               <a
                 href="mailto:zyadd.aymann@gmail.com"
-                className={`inline-block ${accentBg} px-4 py-2 md:px-8 md:py-4 font-black text-sm md:text-lg mb-2 md:mb-3 transition-all duration-300 hover:scale-105 break-all`}
+                className={`inline-block ${themeClasses.accentBg} px-4 py-2 md:px-8 md:py-4 font-black text-sm md:text-lg mb-2 md:mb-3 transition-all duration-300 hover:scale-105 break-all focus:outline-none focus:ring-2 focus:ring-offset-2`}
               >
                 zyadd.aymann@gmail.com
               </a>
@@ -566,7 +732,8 @@ export default function Portfolio() {
               <a
                 href="https://linkedin.com/in/ziad-ayman-6249122a4"
                 target="_blank"
-                className={`inline-block ${accentBg} px-4 py-2 md:px-8 md:py-4 font-black text-sm md:text-lg mb-2 md:mb-3 transition-all duration-300 hover:scale-105`}
+                rel="noopener noreferrer"
+                className={`inline-block ${themeClasses.accentBg} px-4 py-2 md:px-8 md:py-4 font-black text-sm md:text-lg mb-2 md:mb-3 transition-all duration-300 hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-2`}
               >
                 @ziad-ayman
               </a>
@@ -579,7 +746,7 @@ export default function Portfolio() {
       </section>
 
       {/* CAPABILITIES BANNER */}
-      <section id="work" className={`py-10 sm:py-20 md:py-32 ${accentBg}`}>
+      <section id="work" className={`py-10 sm:py-20 md:py-32 ${themeClasses.accentBg}`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="text-center mb-8 md:mb-16">
             <h2 className="text-4xl sm:text-6xl md:text-8xl font-black mb-4">
@@ -618,7 +785,7 @@ export default function Portfolio() {
         <div className="max-w-7xl mx-auto">
           <div className="flex items-start gap-4 md:gap-6 mb-6 md:mb-16">
             <div
-              className={`${accentBg} px-3 py-1 md:px-4 md:py-2 text-xl md:text-2xl font-black`}
+              className={`${themeClasses.accentBg} px-3 py-1 md:px-4 md:py-2 text-xl md:text-2xl font-black`}
             >
               02
             </div>
@@ -630,38 +797,59 @@ export default function Portfolio() {
           </div>
 
           {FEATURED_PROJECTS.map((project, i) => (
-            <div
+            <article
               key={i}
-              className={`border-2 ${border} mb-6 md:mb-16 transition-all duration-500 hover:shadow-2xl`}
+              className={`border-2 ${themeClasses.border} mb-6 md:mb-16 transition-all duration-500 hover:shadow-2xl`}
             >
               <div className="grid md:grid-cols-2">
                 <div
                   className="relative overflow-hidden cursor-pointer group h-[400px] md:h-[600px]"
-                  onClick={() => setSelectedProject(project)}
+                  onClick={() => handleOpenModal(project)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      handleOpenModal(project);
+                    }
+                  }}
+                  aria-label={`View ${project.title} gallery`}
                 >
                   <img
                     src={project.images[0]}
-                    alt={project.title}
-                    className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                    alt={`${project.title} - ${project.subtitle}`}
+                    className="w-full h-full object-cover object-top transition-transform duration-700 group-hover:scale-110"
+                    loading="lazy"
                   />
                   <div
                     className={`absolute inset-0 bg-black opacity-0 group-hover:opacity-20 transition-opacity duration-500`}
                   />
                   <div
-                    className={`absolute top-4 right-4 md:top-6 md:right-6 ${accentBg} px-3 py-1 md:px-4 md:py-2 font-black text-xs md:text-sm`}
+                    className={`absolute top-4 right-4 md:top-6 md:right-6 ${themeClasses.accentBg} px-3 py-1 md:px-4 md:py-2 font-black text-xs md:text-sm`}
                   >
                     {project.images.length} IMAGES
                   </div>
                 </div>
 
                 <div
-                  className={`p-4 md:p-12 border-t-2 md:border-t-0 md:border-l-2 ${border} md:h-[400px] lg:h-[600px] md:overflow-y-auto custom-scrollbar`}
+                  className={`p-4 md:p-12 border-t-2 md:border-t-0 md:border-l-2 ${themeClasses.border} md:h-[400px] lg:h-[600px] md:overflow-y-auto custom-scrollbar`}
                 >
-                  <h3 className="text-3xl md:text-5xl font-black mb-2 md:mb-3">
-                    {project.title}
-                  </h3>
+                  <div className="flex items-start justify-between gap-3 mb-2 md:mb-3">
+                    <h3 className="text-3xl md:text-5xl font-black">
+                      {project.title}
+                    </h3>
+                    {project.inProgress && (
+                      <div
+                        className={`${
+                          darkMode ? "bg-[#f5f1e8] text-[#1c1c1c]" : "bg-[#1c1c1c] text-[#f5f1e8]"
+                        } px-2 py-1 md:px-3 md:py-1.5 font-black text-[10px] md:text-xs whitespace-nowrap`}
+                      >
+                        IN PROGRESS
+                      </div>
+                    )}
+                  </div>
                   <p
-                    className={`text-xl md:text-2xl ${accent} font-black mb-3 md:mb-8`}
+                    className={`text-xl md:text-2xl ${themeClasses.accent} font-black mb-3 md:mb-8`}
                   >
                     {project.subtitle}
                   </p>
@@ -680,7 +868,7 @@ export default function Portfolio() {
                         IMPACT
                       </p>
                       <p
-                        className={`text-sm md:text-base font-black ${accent}`}
+                        className={`text-sm md:text-base font-black ${themeClasses.accent}`}
                       >
                         {project.impact}
                       </p>
@@ -699,7 +887,7 @@ export default function Portfolio() {
                       {project.features.map((feature, j) => (
                         <li key={j} className="flex items-start gap-2 md:gap-3">
                           <span
-                            className={`${accent} font-black text-lg md:text-xl`}
+                            className={`${themeClasses.accent} font-black text-lg md:text-xl`}
                           >
                             •
                           </span>
@@ -715,7 +903,7 @@ export default function Portfolio() {
                     {project.tech.map((tech, j) => (
                       <span
                         key={j}
-                        className={`border-2 ${border} px-3 py-1 md:px-4 md:py-2 text-xs font-black`}
+                        className={`border-2 ${themeClasses.border} px-3 py-1 md:px-4 md:py-2 text-xs font-black`}
                       >
                         {tech}
                       </span>
@@ -724,8 +912,8 @@ export default function Portfolio() {
 
                   <div className="flex flex-wrap gap-3 md:gap-4">
                     <button
-                      onClick={() => setSelectedProject(project)}
-                      className={`flex items-center gap-2 md:gap-3 font-black border-2 ${border} px-4 py-2 md:px-8 md:py-4 ${hoverBg} transition-all duration-300 hover:scale-105 text-sm md:text-base`}
+                      onClick={() => handleOpenModal(project)}
+                      className={`flex items-center gap-2 md:gap-3 font-black border-2 ${themeClasses.border} px-4 py-2 md:px-8 md:py-4 ${themeClasses.hoverBg} transition-all duration-300 hover:scale-105 text-sm md:text-base focus:outline-none focus:ring-2 focus:ring-offset-2`}
                     >
                       VIEW GALLERY{" "}
                       <ArrowRight size={18} className="md:w-5 md:h-5" />
@@ -735,7 +923,7 @@ export default function Portfolio() {
                         href={project.live}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className={`flex items-center gap-2 md:gap-3 font-black ${accentBg} px-4 py-2 md:px-8 md:py-4 transition-all duration-300 hover:scale-105 text-sm md:text-base`}
+                        className={`flex items-center gap-2 md:gap-3 font-black ${themeClasses.accentBg} px-4 py-2 md:px-8 md:py-4 transition-all duration-300 hover:scale-105 text-sm md:text-base focus:outline-none focus:ring-2 focus:ring-offset-2`}
                       >
                         <ExternalLink size={18} className="md:w-5 md:h-5" />{" "}
                         LIVE
@@ -746,7 +934,7 @@ export default function Portfolio() {
                         href={project.github}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className={`flex items-center gap-2 md:gap-3 font-black border-2 ${border} px-4 py-2 md:px-8 md:py-4 ${hoverBg} transition-all duration-300 hover:scale-105 text-sm md:text-base`}
+                        className={`flex items-center gap-2 md:gap-3 font-black border-2 ${themeClasses.border} px-4 py-2 md:px-8 md:py-4 ${themeClasses.hoverBg} transition-all duration-300 hover:scale-105 text-sm md:text-base focus:outline-none focus:ring-2 focus:ring-offset-2`}
                       >
                         <Github size={18} className="md:w-5 md:h-5" /> CODE
                       </a>
@@ -754,7 +942,7 @@ export default function Portfolio() {
                   </div>
                 </div>
               </div>
-            </div>
+            </article>
           ))}
         </div>
       </section>
@@ -764,7 +952,7 @@ export default function Portfolio() {
         <div className="max-w-7xl mx-auto">
           <div className="flex items-start gap-4 md:gap-6 mb-6 md:mb-16">
             <div
-              className={`${accentBg} px-3 py-1 md:px-4 md:py-2 text-xl md:text-2xl font-black`}
+              className={`${themeClasses.accentBg} px-3 py-1 md:px-4 md:py-2 text-xl md:text-2xl font-black`}
             >
               03
             </div>
@@ -777,49 +965,91 @@ export default function Portfolio() {
 
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
             {WEB_PROJECTS.map((project, i) => (
-              <div
+              <article
                 key={i}
-                onClick={() => setSelectedProject(project)}
-                className={`group border-2 ${border} overflow-hidden cursor-pointer ${hoverBg} transition-all duration-500 hover:shadow-2xl`}
+                className={`group border-2 ${themeClasses.border} overflow-hidden transition-all duration-500 hover:shadow-2xl`}
               >
-                <div className="relative aspect-video overflow-hidden">
+                <div 
+                  className="relative aspect-video overflow-hidden cursor-pointer"
+                  onClick={() => handleOpenModal(project)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      handleOpenModal(project);
+                    }
+                  }}
+                  tabIndex={0}
+                  role="button"
+                  aria-label={`View ${project.title} gallery`}
+                >
                   <img
                     src={project.images[0]}
-                    alt={project.title}
+                    alt={`${project.title} - ${project.subtitle}`}
                     className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                    loading="lazy"
                   />
                   {project.comingSoon && (
                     <div
-                      className={`absolute top-3 right-3 md:top-4 md:right-4 ${accentBg} px-2 py-1 md:px-3 md:py-1 font-black text-xs`}
+                      className={`absolute top-3 right-3 md:top-4 md:right-4 ${themeClasses.accentBg} px-2 py-1 md:px-3 md:py-1 font-black text-xs`}
                     >
                       SOON
                     </div>
                   )}
                 </div>
-                <div className={`p-4 md:p-6 border-t-2 ${border}`}>
+                <div className={`p-4 md:p-6 border-t-2 ${themeClasses.border}`}>
                   <h3 className="text-xl md:text-2xl font-black mb-1">
                     {project.title}
                   </h3>
                   <p
-                    className={`${accent} font-black text-xs md:text-sm mb-2 md:mb-4`}
+                    className={`${themeClasses.accent} font-black text-xs md:text-sm mb-2 md:mb-4`}
                   >
                     {project.subtitle}
                   </p>
                   <p className="text-xs md:text-sm mb-3 md:mb-4 opacity-80">
                     {project.description}
                   </p>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-2 mb-3 md:mb-4">
                     {project.tech.slice(0, 2).map((tech, j) => (
                       <span
                         key={j}
-                        className={`border-2 ${border} px-2 py-1 md:px-3 md:py-1 text-xs font-black`}
+                        className={`border-2 ${themeClasses.border} px-2 py-1 md:px-3 md:py-1 text-xs font-black`}
                       >
                         {tech}
                       </span>
                     ))}
                   </div>
+                  <div className="flex flex-wrap gap-2">
+                    {project.live !== "#" && !project.comingSoon && (
+                      <a
+                        href={project.live}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className={`flex items-center gap-1.5 font-black ${themeClasses.accentBg} px-3 py-1.5 text-xs transition-all duration-300 hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-2`}
+                      >
+                        <ExternalLink size={14} /> LIVE
+                      </a>
+                    )}
+                    {project.github !== "#" && (
+                      <a
+                        href={project.github}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className={`flex items-center gap-1.5 font-black border-2 ${themeClasses.border} px-3 py-1.5 text-xs ${themeClasses.hoverBg} transition-all duration-300 hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-2`}
+                      >
+                        <Github size={14} /> CODE
+                      </a>
+                    )}
+                    <button
+                      onClick={() => handleOpenModal(project)}
+                      className={`flex items-center gap-1.5 font-black border-2 ${themeClasses.border} px-3 py-1.5 text-xs ${themeClasses.hoverBg} transition-all duration-300 hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-2`}
+                    >
+                      <ArrowRight size={14} /> VIEW
+                    </button>
+                  </div>
                 </div>
-              </div>
+              </article>
             ))}
           </div>
         </div>
@@ -945,7 +1175,7 @@ export default function Portfolio() {
       </section>
 
       {/* CONTACT */}
-      <section id="contact" className={`py-10 sm:py-20 md:py-32 ${accentBg}`}>
+      <section id="contact" className={`py-10 sm:py-20 md:py-32 ${themeClasses.accentBg}`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 text-center">
           <h2 className="text-[16vw] sm:text-[14vw] md:text-[10vw] font-black leading-tight mb-6 md:mb-12">
             LET'S WORK
@@ -966,7 +1196,7 @@ export default function Portfolio() {
                 darkMode
                   ? "border-[#1c1c1c] hover:bg-[#1c1c1c] hover:text-[#ff8c42]"
                   : "border-[#f5f1e8] hover:bg-[#f5f1e8] hover:text-[#c5581f]"
-              } px-6 py-3 md:px-10 md:py-5 transition-all duration-300 hover:scale-105`}
+              } px-6 py-3 md:px-10 md:py-5 transition-all duration-300 hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-2`}
             >
               <Mail size={24} className="md:w-7 md:h-7" /> EMAIL ME
             </a>
@@ -978,7 +1208,7 @@ export default function Portfolio() {
                 darkMode
                   ? "border-[#1c1c1c] hover:bg-[#1c1c1c] hover:text-[#ff8c42]"
                   : "border-[#f5f1e8] hover:bg-[#f5f1e8] hover:text-[#c5581f]"
-              } px-6 py-3 md:px-10 md:py-5 transition-all duration-300 hover:scale-105`}
+              } px-6 py-3 md:px-10 md:py-5 transition-all duration-300 hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-2`}
             >
               <Github size={24} className="md:w-7 md:h-7" /> GITHUB
             </a>
@@ -990,7 +1220,7 @@ export default function Portfolio() {
                 darkMode
                   ? "border-[#1c1c1c] hover:bg-[#1c1c1c] hover:text-[#ff8c42]"
                   : "border-[#f5f1e8] hover:bg-[#f5f1e8] hover:text-[#c5581f]"
-              } px-6 py-3 md:px-10 md:py-5 transition-all duration-300 hover:scale-105`}
+              } px-6 py-3 md:px-10 md:py-5 transition-all duration-300 hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-2`}
             >
               <Linkedin size={24} className="md:w-7 md:h-7" /> LINKEDIN
             </a>
@@ -999,7 +1229,7 @@ export default function Portfolio() {
       </section>
 
       {/* FOOTER */}
-      <footer className={`py-6 md:py-12 px-4 sm:px-6 border-t-2 ${border}`}>
+      <footer className={`py-6 md:py-12 px-4 sm:px-6 border-t-2 ${themeClasses.border}`}>
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 md:gap-8 mb-4 md:mb-8">
             <div>
@@ -1013,7 +1243,8 @@ export default function Portfolio() {
                 href="https://github.com/ziadayman00"
                 target="_blank"
                 rel="noopener noreferrer"
-                className={`p-2 md:p-3 border-2 ${border} ${hoverBg} transition-all duration-300`}
+                className={`p-2 md:p-3 border-2 ${themeClasses.border} ${themeClasses.hoverBg} transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2`}
+                aria-label="GitHub Profile"
               >
                 <Github size={20} className="md:w-6 md:h-6" />
               </a>
@@ -1021,13 +1252,15 @@ export default function Portfolio() {
                 href="https://linkedin.com/in/ziad-ayman-6249122a4"
                 target="_blank"
                 rel="noopener noreferrer"
-                className={`p-2 md:p-3 border-2 ${border} ${hoverBg} transition-all duration-300`}
+                className={`p-2 md:p-3 border-2 ${themeClasses.border} ${themeClasses.hoverBg} transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2`}
+                aria-label="LinkedIn Profile"
               >
                 <Linkedin size={20} className="md:w-6 md:h-6" />
               </a>
               <a
                 href="mailto:zyadd.aymann@gmail.com"
-                className={`p-2 md:p-3 border-2 ${border} ${hoverBg} transition-all duration-300`}
+                className={`p-2 md:p-3 border-2 ${themeClasses.border} ${themeClasses.hoverBg} transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2`}
+                aria-label="Email Contact"
               >
                 <Mail size={20} className="md:w-6 md:h-6" />
               </a>
