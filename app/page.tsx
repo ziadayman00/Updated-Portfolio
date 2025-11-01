@@ -547,14 +547,14 @@ export default function Portfolio() {
           href="https://drive.google.com/file/d/11gxwQIABEZ1E3ttQNU_WTih6wULXM8Uk/view?usp=drive_link"
           target="_blank"
           rel="noopener noreferrer"
-          className="transition-all duration-300 p-2 md:p-2 focus:outline-none focus:ring-2 focus:ring-offset-2 rounded-full"
+          className="transition-all duration-300 p-2 md:p-2  rounded-full"
           aria-label="View Resume"
         >
           <FileText size={24} className="md:w-7 md:h-7" />
         </a>
         <button
           onClick={() => setDarkMode(!darkMode)}
-          className="transition-all duration-300 p-2 md:p-2 focus:outline-none focus:ring-2 focus:ring-offset-2 rounded-full"
+          className="transition-all duration-300 p-2 md:p-2  rounded-full"
           aria-label={darkMode ? "Switch to light mode" : "Switch to dark mode"}
         >
           {darkMode ? (
@@ -565,7 +565,7 @@ export default function Portfolio() {
         </button>
         <button
           onClick={() => setMenuOpen(!menuOpen)}
-          className="flex flex-col items-center justify-center gap-1.5 transition-all duration-300 p-2 focus:outline-none focus:ring-2 focus:ring-offset-2 rounded"
+          className="flex flex-col items-center justify-center gap-1.5 transition-all duration-300 p-2 rounded"
           aria-label={menuOpen ? "Close menu" : "Open menu"}
           aria-expanded={menuOpen}
         >
